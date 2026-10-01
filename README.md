@@ -6,7 +6,7 @@ Live project type: portfolio project demonstrating RAG architecture design, debu
 
 ## Why this project
 
-<img src="demo_1.png" alt="Demo" width="500">
+<img src="demo-full.png" alt="Demo" width="500">
 
 Most RAG demos stop at "it returns an answer." This project focuses on the parts that actually make a RAG system trustworthy: **can you verify where an answer came from, and does the system admit when it doesn't know something?** Building it surfaced three non-obvious bugs (detailed below) that would have been invisible in a typical demo — each one made the system *look* like it was working while it quietly wasn't.
 
