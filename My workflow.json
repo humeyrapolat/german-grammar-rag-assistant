@@ -1,0 +1,556 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Upload Book",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "book",
+              "fieldType": "file",
+              "fieldName": "book",
+              "multipleFiles": false,
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c7fde7c0-1d78-4cec-a018-5d52e02d29d2",
+      "name": "Book Upload Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        16,
+        -48
+      ],
+      "webhookId": "0fbdf8cb-b766-4b3a-8119-3b1ce308fe4d"
+    },
+    {
+      "parameters": {
+        "jsCode": "const buffer = await this.helpers.getBinaryDataBuffer(0, 'book');\nconst text = buffer.toString('utf-8');\nconst pages = JSON.parse(text);\n// unit1-3.json zaten sadece sayfa 1-80 içeriyor, bu yüzden aralığı tüm dosyayı kapsayacak şekilde açıyoruz\nconst START_PAGE = 1;\nconst END_PAGE = 999;\nconst out = [];\nfor (const p of pages) {\n  const clean = String((p && p.text) || '').replace(/\\s+/g, ' ').trim();\n  // skip empty/near-empty pages: Gemini returns empty vectors for them\n  if (clean.length >= 30 && Number(p.page) >= START_PAGE && Number(p.page) <= END_PAGE) out.push({ json: { page: p.page, text: clean } });\n}\nif (out.length === 0) {\n  throw new Error('No page with usable text found in the JSON file.');\n}\nreturn out;"
+      },
+      "id": "d9c53c6d-979a-4933-a4d8-fe8a781c691e",
+      "name": "Code in JavaScript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "options": {}
+      },
+      "id": "35235cca-1d37-465c-8853-d649616d9187",
+      "name": "Edit Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        624,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "german-notes",
+          "mode": "list"
+        },
+        "options": {
+          "clearNamespace": false
+        }
+      },
+      "id": "dac83e14-bd5d-47f7-89bc-aac8d28228af",
+      "name": "Pinecone Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        448,
+        0
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "n1vlYeEsp3ZXUrAE",
+          "name": "Pinecone account 2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "735162d4-033c-4165-a617-20a0285df791",
+      "name": "Embeddings Google Gemini",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        448,
+        144
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "PiqBN0hx15ltYKJw",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.text }}",
+        "textSplittingMode": "custom",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "source",
+                "value": "={{ $(\"Book Upload Form\").first().json.book.filename }}"
+              },
+              {
+                "name": "page",
+                "value": "={{ $json.page }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "544611a1-c316-4a58-90e2-e2a01241b0de",
+      "name": "Default Data Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        416,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "chunkSize": 700,
+        "chunkOverlap": 100,
+        "options": {}
+      },
+      "id": "e313d451-a59b-4161-8051-a47562804a54",
+      "name": "Recursive Character Text Splitter",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        416,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 60
+      },
+      "id": "6203cdd6-ff26-47cd-8b72-1e9e537bf62b",
+      "name": "Wait For Rate Limit",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        0
+      ],
+      "webhookId": "05d76937-db01-4fef-8070-0f08512cfc25"
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      },
+      "id": "06662aee-53ca-4f4e-93a3-5df2f7e906b6",
+      "name": "Loop Over Pages",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        288,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "81f69073-8841-4988-bf5d-c988be5a4d0c",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        -1392,
+        320
+      ],
+      "webhookId": "8bf74a19-ea46-4dc1-8907-686f2b7c5ce5"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": {}
+      },
+      "id": "175b3f1e-de10-4c1e-8934-75679499ff2a",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        624
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "NDxdhbPmfiMgfpq3",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "909ce135-7db6-4352-8d1b-efcf9648e623",
+      "name": "Embeddings Google Gemini1",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -912,
+        464
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "JSFCzD5itkyn9Y3v",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "load",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "german-notes",
+          "mode": "list",
+          "cachedResultName": "german-notes"
+        },
+        "prompt": "={{ $('When chat message received').item.json.chatInput }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        -912,
+        320
+      ],
+      "id": "054c23cb-0fa3-4c2d-9f5b-a70af9dd3dce",
+      "name": "Pinecone Vector Store2",
+      "credentials": {
+        "pineconeApi": {
+          "id": "n1vlYeEsp3ZXUrAE",
+          "name": "Pinecone account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst question = $('When chat message received').item.json.chatInput;\n\nconst blocks = items.map(item => {\n  const page = item.json.document.metadata.page;\n  const text = item.json.document.pageContent;\n  return `[Sayfa ${page}]\\n${text}`;\n}).join('\\n\\n---\\n\\n');\n\nconst history = $('Chat Memory Manager').item.json.messages || [];\nconst chatHistory = history.map(turn => `User: ${turn.human}\\nAssistant: ${turn.ai}`).join('\\n\\n');\n\nreturn [{ json: { context: blocks, question, chatHistory } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        320
+      ],
+      "id": "8d53754c-1b2c-402c-a80f-832f32883677",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Bisherige Konversation:\n{{ $json.chatHistory }}\n\nFrage: {{ $json.question }}\n\nKontext:\n{{ $json.context }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Du bist ein hilfreicher Deutschlehrer-Assistent. Antworte ausschließlich basierend auf dem gegebenen Kontext.  Der Kontext besteht aus mehreren Textabschnitten, die jeweils mit [Sayfa X] gekennzeichnet sind (X ist die Seitenzahl im Quellbuch). Wenn du für deine Antwort Informationen aus einem bestimmten Abschnitt verwendest, gib am Ende deiner Antwort an, welche Seiten du verwendet hast, im folgenden Format:  Quellen: Sayfa X, Sayfa Y  Wenn die Antwort nicht im gegebenen Kontext enthalten ist, sage das klar und erfinde keine Informationen.  Wichtig: Nicht jeder bereitgestellte Textabschnitt ist automatisch relevant für die gestellte Frage. Die Abschnitte wurden per Ähnlichkeitssuche ausgewählt und können auch thematisch nicht passende Treffer enthalten (z. B. zufällige Zahlen- oder Wortübereinstimmungen, etwa eine Seitenangabe oder Kapitelnummer in einer Fußzeile, die rein äußerlich zur Frage passt, inhaltlich aber nicht). Prüfe für jeden Abschnitt kritisch, ob er inhaltlich wirklich zur Frage passt, bevor du ihn verwendest. Wenn kein Abschnitt inhaltlich passt — auch wenn einzelne Wörter oder Zahlen zufällig übereinstimmen — sage klar, dass du dazu keine Information im Kontext findest.Du erhältst außerdem den Abschnitt \"Bisherige Konversation\" mit den vorangegangenen Fragen und Antworten dieser Unterhaltung. Nutze ihn, um zu verstehen, worauf sich die aktuelle Frage bezieht, besonders wenn sie unvollständig ist oder sich erkennbar auf ein vorheriges Thema bezieht (z. B. \"und was ist mit...\"). Die inhaltliche Antwort selbst darf aber ausschließlich auf dem Abschnitt \"Kontext\" basieren, nicht auf der Konversationshistorie — erfinde auch hier keine Informationen, die nicht im Kontext stehen."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -400,
+        320
+      ],
+      "id": "1dda1347-0f03-411e-a32c-292197847517",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryManager",
+      "typeVersion": 1.1,
+      "position": [
+        -1216,
+        320
+      ],
+      "id": "1ad8356f-dba2-440b-8cc5-b39ca187bd5c",
+      "name": "Chat Memory Manager"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        -1216,
+        864
+      ],
+      "id": "58321c82-9a08-4dd3-9e37-d2d6fbd88771",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "user",
+              "message": "={{ $('When chat message received').item.json.chatInput }}"
+            },
+            {
+              "type": "ai",
+              "message": "={{ $('Basic LLM Chain').item.json.text }}"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryManager",
+      "typeVersion": 1.1,
+      "position": [
+        -736,
+        752
+      ],
+      "id": "ce504b81-8787-4411-931d-55a8c7ea4ac3",
+      "name": "Chat Memory Manager1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Book Upload Form": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Vector Store": {
+      "main": [
+        [
+          {
+            "node": "Wait For Rate Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait For Rate Limit": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Pages": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Chat Memory Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store2",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Vector Store2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Memory Manager": {
+      "main": [
+        [
+          {
+            "node": "Pinecone Vector Store2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Chat Memory Manager",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Chat Memory Manager1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Chat Memory Manager1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "f65e4621-9b26-442d-a4fe-b41bbefc693f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bfcec8f85e719bc30bf34dad63d65d000353b2c00036c182d954e67e7a4a73b2"
+  },
+  "nodeGroups": [
+    {
+      "id": "011beac1-3127-49da-b2b5-6ccda9d4b6fc",
+      "name": "Index uploaded book",
+      "nodeIds": [
+        "d9c53c6d-979a-4933-a4d8-fe8a781c691e",
+        "06662aee-53ca-4f4e-93a3-5df2f7e906b6",
+        "dac83e14-bd5d-47f7-89bc-aac8d28228af",
+        "735162d4-033c-4165-a617-20a0285df791",
+        "544611a1-c316-4a58-90e2-e2a01241b0de",
+        "e313d451-a59b-4161-8051-a47562804a54",
+        "6203cdd6-ff26-47cd-8b72-1e9e537bf62b",
+        "35235cca-1d37-465c-8853-d649616d9187"
+      ],
+      "description": "Reads the uploaded page file, drops empty pages, and stores the rest in the notes index in small paced batches"
+    }
+  ],
+  "id": "UFpikFyco9JQWggR",
+  "tags": []
+}
