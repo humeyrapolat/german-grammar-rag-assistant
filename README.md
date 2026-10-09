@@ -87,15 +87,20 @@ Asking "What's in Kapitel 15?" (a chapter outside the indexed range) returned a 
 
 ## Evaluation
 
-A structured 14-question test set (`test-cases.md`, included in this repo) covers five categories:
+A structured 14-question test set (`test-cases.md`) originally covered five categories by hand (basic retrieval, multi-page synthesis, out-of-scope/hallucination checks, phrasing robustness, edge cases). `eval/` extends this to 34 questions and automates the mechanical half of grading:
 
-1. **Basic single-page questions** — does retrieval find the right chunk?
-2. **Multi-page synthesis** — can it combine information from several retrieved chunks?
-3. **Out-of-scope / hallucination checks** — does it correctly refuse to answer from outside the indexed book, or from general knowledge?
-4. **Robustness to phrasing** — same question in Turkish, English, and as a fragmented keyword query.
-5. **Edge cases** — empty input, an impossibly broad request ("summarize the whole book" against a top-4 retrieval limit).
+```bash
+pip install -r eval/requirements.txt
+python eval/run_eval.py
+```
 
-Each answer is checked against three criteria: accuracy against the source, correct/honest citation, and — for the hallucination category — whether the system admits what it doesn't know rather than guessing.
+`eval/run_eval.py` bypasses the n8n UI and calls the same Pinecone index, Gemini embeddings, and Groq model directly (same top-k, same context format, same system prompt — copied from `workflow.json`, not reworded), so all 34 questions run in one batch instead of being pasted into the n8n chat one at a time.
+
+What it checks automatically, for every answer:
+- **Citation sanity** (for questions expected to cite a source): is there a `Quellen: Sayfa N` line, and is every cited page within the book's indexed range (1–80)? A citation pointing outside that range is a concrete, catchable bug — exactly the kind the debugging log below already found once.
+- **Refusal honesty** (for the hallucination-check category): does the answer actually refuse, instead of answering from general knowledge?
+
+What it does **not** grade automatically: whether a non-refusal answer is factually correct against the actual book page it cites. That still needs a quick human skim — same as the original `test-cases.md` always required — since no automated judge here has the source PDF to check against. Results are written to `eval/results.json`.
 
 ## Known limitations
 
